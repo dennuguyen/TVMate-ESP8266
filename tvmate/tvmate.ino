@@ -2,12 +2,15 @@
 #include <ESP8266mDNS.h>
 #include <WebSocketsServer.h>
 
-const char* ssid = "";
-const char* password = "";
+#include <IRremote.hpp>
 
-const int port = 80;
+#define IR_SEND_PIN 2
 
-WebSocketsServer webSocket = WebSocketsServer(port);  // websocket init with port 81
+const char* SSID = "WiFi-42F4";
+const char* PASSWORD = "aEtRsT2$";
+const uint16_t PORT = 80;
+
+WebSocketsServer webSocket = WebSocketsServer(PORT);
 
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
     switch (type) {
@@ -21,15 +24,17 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
             // send message to client
             webSocket.sendTXT(num, "Connected");
         } break;
-        case WStype_TEXT:
+        case WStype_TEXT: {
             Serial.printf("[%u] get Text: %s\n", num, payload);
+            uint32_t command = (uint32_t)strtol((const char*)payload, NULL, 16);
+            IrSender.sendNEC(0x00, command, 0);
 
             // send message to client
             // webSocket.sendTXT(num, "message here");
 
             // send data to all connected clients
             // webSocket.broadcastTXT("message here");
-            break;
+        } break;
         case WStype_BIN:
             Serial.printf("[%u] get binary length: %u\n", num, length);
             hexdump(payload, length);
@@ -37,43 +42,47 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
             // send message to client
             // webSocket.sendBIN(num, payload, length);
             break;
+        default:
+            break;
     }
 }
 
 void setup() {
     Serial.begin(115200);
+    pinMode(IR_SEND_PIN, OUTPUT);
 
     // Connect to WiFi network.
     WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    Serial.println("");
-
-    // Wait for connection.
+    WiFi.begin(SSID, PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
-        Serial.print(".");
+        Serial.printf(".");
     }
-    Serial.print("Connected to WiFi: ");
-    Serial.println(ssid);
+    Serial.printf("Connected to WiFi: %s\n", SSID);
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
+    // Begin mDNS.
     if (!MDNS.begin("esp8266")) {
         Serial.println("ERROR: Could not set up mDNS responder.");
         while (1);
     }
-
     Serial.println("mDNS responder started.");
-    MDNS.addService("esp8266", "tcp", port);
+    MDNS.addService("esp8266", "tcp", PORT);
 
     // Service txt is required for Bonsoir to discover the device.
     MDNS.addServiceTxt("esp8266", "tcp", "vendor", "Espressif");
     MDNS.addServiceTxt("esp8266", "tcp", "version", "1.0");
     MDNS.addServiceTxt("esp8266", "tcp", "module", "AT");
 
+    // Establish connection with websockets.
     webSocket.begin();
     webSocket.onEvent(webSocketEvent);
     Serial.println("Websocket server started.");
+
+    // Begin IR sending protocol.
+    IrSender.begin(IR_SEND_PIN);
+    disableLEDFeedback();
 }
 
 void loop() {
