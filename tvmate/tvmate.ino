@@ -20,12 +20,18 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
         case WStype_CONNECTED: {
             IPAddress ip = webSocket.remoteIP(num);
             Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-            webSocket.sendTXT(num, "Connected");
         } break;
         case WStype_TEXT: {
             Serial.printf("[%u] get Text: %s\n", num, payload);
-            uint32_t command = (uint32_t)strtol((const char*)payload, NULL, 16);
-            IrSender.sendNEC(0x00, command, 0);
+            const char* payload_str = (const char*)payload;
+            if (strcmp(payload_str, "ping") == 0) {
+                // Handle ping pong.
+                webSocket.sendTXT(num, "pong");
+            } else {
+                // Fire IR command.
+                uint32_t command = (uint32_t)strtol(payload_str, NULL, 16);
+                IrSender.sendNEC(0x00, command, 0);
+            }
         } break;
         case WStype_BIN:
             Serial.printf("[%u] get binary length: %u\n", num, length);
